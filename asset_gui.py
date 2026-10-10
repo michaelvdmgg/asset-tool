@@ -1,6 +1,6 @@
-"""GT Equipment: a small window over asset_tool.py. Add equipment, log calibrations, see the list.
+"""Equipment Registry: a small window over asset_tool.py. Add equipment, log calibrations, see the list.
 
-  pyw asset_gui.py        (or double-click "GT Equipment.bat")
+  pyw asset_gui.py        (or double-click "Equipment Registry.bat")
 
 Uses the same .env and the same functions as the command line, so both stay in step.
 """
@@ -30,7 +30,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         at.load_env()
-        self.title("GT Equipment")
+        self.title("Equipment Registry")
         self.geometry("980x700")
         self.minsize(860, 600)
         try:
@@ -63,7 +63,7 @@ class App(tk.Tk):
         bg = "#1f2a44"
         head = tk.Frame(self, bg=bg, padx=18, pady=12)
         head.pack(fill="x")
-        tk.Label(head, text="GT Equipment Registry", bg=bg, fg="white", font=("Segoe UI Semibold", 15)).pack(side="left")
+        tk.Label(head, text="Equipment Registry", bg=bg, fg="white", font=("Segoe UI Semibold", 15)).pack(side="left")
         self.conn = tk.Label(head, text="Connecting…", bg=bg, fg="#b8c2d9", font=("Segoe UI", 9))
         self.conn.pack(side="left", padx=16)
         tk.Checkbutton(head, text="Practice mode (no Jira)", variable=self.practice, command=self.refresh,
@@ -275,15 +275,14 @@ class App(tk.Tk):
 
     def refresh(self, quiet=False):
         def job(jira):
-            who = jira.whoami()
             rows = jira.search(f'project = "{jira.project}" AND labels = "equipment"', ["summary", "duedate"] + at.EQ_FIELDS)
-            return who, jira.project, sorted(rows, key=lambda r: r["fields"].get("Equipment ID") or "")
+            return jira.project, sorted(rows, key=lambda r: r["fields"].get("Equipment ID") or "")
         self.run(job, self._refreshed, None if quiet else "Loading equipment…")
 
     def _refreshed(self, result, out):
-        who, project, rows = result
+        project, rows = result
         mode = "PRACTICE (local file, not Jira)" if self.practice.get() else f"Jira space {project}"
-        self.conn.configure(text=f"{who}  ·  {mode}  ·  {len(rows)} items")
+        self.conn.configure(text=f"{mode}  ·  {len(rows)} items")
         self.tree.delete(*self.tree.get_children())
         self.racks, self.equipment = {}, {}
         for r in rows:

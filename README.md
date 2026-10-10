@@ -1,4 +1,4 @@
-# GT equipment registry (Jira + QR labels)
+# Equipment registry (Jira + QR labels)
 
 Type an instrument's identification once. The tool gives it a permanent Equipment ID, creates its
 Jira record, records its calibration, and prints a QR label. Base Jira only (no Assets add-on).
@@ -70,7 +70,7 @@ Set `LABEL_PRINTER` to the Windows name of the Brother P-touch. Printing goes th
 
 ## Window instead of commands
 
-Double-click **`GT Equipment.bat`** (or run `pyw asset_gui.py`). Three tabs:
+Double-click **`Equipment Registry.bat`** (or run `pyw asset_gui.py`). Three tabs:
 
 - **Add equipment**: type, manufacturer, model, S/N, rack, last cal date → **Add to Jira**. Shows the
   new Equipment ID, a link to the Jira item, the calibration status and the QR label.
