@@ -5,6 +5,13 @@ Jira record, records its calibration, and prints a QR label. Base Jira only (no 
 
 ## Jira model (Lab Equipment space, key LAB)
 
+**No Jira setup needed.** By default the tool uses the space's standard **Task** (one per piece of
+equipment) and **Subtask** (one per calibration event) and keeps the details in each description: a
+readable table plus a small JSON block the tool reads back. If you later add the custom work types and
+fields below, the tool switches to them automatically (`JIRA_MODE=auto|simple|fields` overrides).
+
+Concepts (either mode):
+
 | Item | What it is |
 |---|---|
 | **Equipment** work type | one per physical item, racks included. Fields: Equipment ID, Equipment Class, Manufacturer, Model, Serial Number, Location, Calibration Status, Last Calibrated; built-in **Due date** = next cal due |
@@ -19,7 +26,7 @@ Jira record, records its calibration, and prints a QR label. Base Jira only (no 
   Conditional results count as Unknown unless `CONDITIONAL_COUNTS_AS=valid`.
 - A calibration entered late (older than the latest one) is kept as history but doesn't overwrite the summary.
 
-### Setting up the work types (once, Space settings > Work types; names must match)
+### Optional: real fields (Space settings > Work types; names must match)
 
 1. Add work type **Equipment** with fields: Short text *Equipment ID*, *Manufacturer*, *Model*, *Serial Number*,
    *Location*; Dropdown *Equipment Class* (Test Rack, Pressure Transducer, Load Cell, Load Cell Amplifier,
@@ -33,7 +40,7 @@ Jira record, records its calibration, and prints a QR label. Base Jira only (no 
 ```powershell
 py -m pip install -r requirements.txt
 copy .env.example .env        # fill in site, email, API token
-py asset_tool.py setup        # checks access, work types and fields
+py asset_tool.py setup        # checks access (and fields, if you added them)
 py asset_tool.py add-rack "GT Test Rack"   # then set DEFAULT_RACK in .env to the ID it prints
 ```
 

@@ -25,7 +25,7 @@ from pathlib import Path
 
 import calibration as cal
 import labels
-from jira_client import from_env
+from jira_client import connect
 
 HERE = Path(__file__).resolve().parent
 EQUIPMENT, EVENT = "Equipment", "Calibration Event"
@@ -226,13 +226,20 @@ def main(argv=None):
         p.add_argument(f"--{f}")
     p.add_argument("--cnr", action="store_true", help="calibration not required")
     args = p.parse_args(argv)
-    jira = from_env(args.dry_run, HERE / "dryrun_jira.json")
+    jira = connect(args.dry_run, HERE / "dryrun_jira.json")
 
     if args.cmd == "setup":
         print(f"Signed in as {jira.whoami()}")
         name, style = jira.check_project()
         print(f"Space {jira.project}: {name} ({style})")
         types = jira.issue_types()
+        if type(jira).__name__ == "SimpleJira":
+            print("Mode: simple (Task = equipment, Subtask = calibration event, details in the description)")
+            miss = [t for t in ("Task", "Subtask") if t.lower() not in {n.lower() for n in types}]
+            if miss:
+                raise SystemExit(f"Space is missing work type(s) {miss}; enable them in Space settings > Work types.")
+            print("OK")
+            return
         miss_t = [t for t in (EQUIPMENT, EVENT) if t.lower() not in {n.lower() for n in types}]
         miss_f = jira.missing_fields(EQ_FIELDS + EV_FIELDS)
         print("Work types: " + ("OK" if not miss_t else "MISSING " + ", ".join(miss_t)))
