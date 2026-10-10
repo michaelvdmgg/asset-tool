@@ -2,3 +2,4 @@ requests>=2.31
 qrcode>=7.4
 pillow>=10
 pywin32; sys_platform == "win32"
+pytest>=7

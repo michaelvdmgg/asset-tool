@@ -1,4 +1,8 @@
-"""Minimal Jira Cloud REST client (base Jira, no Assets add-on)."""
+"""Minimal Jira Cloud REST client for base Jira (no Assets add-on).
+
+Custom fields are addressed by their display name (e.g. "Serial Number"); the client looks up the
+field ids for this project once. Search results come back with fields keyed by those same names.
+"""
 import json
 import os
 import re
@@ -6,19 +10,14 @@ from pathlib import Path
 
 import requests
 
+SYSTEM_FIELDS = {"summary", "labels", "duedate", "parent", "issuetype", "status", "created", "issuelinks"}
 
-def adf_doc(rows, note=None):
-    """Atlassian Document Format: a two-column table of (field, value) plus an optional note."""
-    def cell(text, header=False):
-        return {"type": "tableHeader" if header else "tableCell",
-                "content": [{"type": "paragraph",
-                             "content": [{"type": "text", "text": str(text) or "-"}]}]}
-    table = {"type": "table", "attrs": {"isNumberColumnEnabled": False, "layout": "default"},
-             "content": [{"type": "tableRow", "content": [cell(k, True), cell(v)]} for k, v in rows]}
-    content = [table]
-    if note:
-        content.append({"type": "paragraph", "content": [{"type": "text", "text": note}]})
-    return {"type": "doc", "version": 1, "content": content}
+
+def adf(text):
+    """Plain text -> Atlassian Document Format (one paragraph per line)."""
+    return {"type": "doc", "version": 1, "content": [
+        {"type": "paragraph", "content": [{"type": "text", "text": line}]} if line else {"type": "paragraph"}
+        for line in str(text).splitlines() or [""]]}
 
 
 class JiraError(RuntimeError):
@@ -28,13 +27,12 @@ class JiraError(RuntimeError):
 class Jira:
     def __init__(self, site, email, token, project):
         site = site.strip().rstrip("/")
-        if not site.startswith("http"):
-            site = "https://" + site
-        self.site, self.project = site, project
+        self.site = site if site.startswith("http") else "https://" + site
+        self.project = project
         self.s = requests.Session()
         self.s.auth = (email, token)
         self.s.headers.update({"Accept": "application/json"})
-        self._types = None
+        self._types = self._fields = self._project_id = None
 
     def _req(self, method, path, **kw):
         r = self.s.request(method, self.site + path, timeout=30, **kw)
@@ -50,53 +48,131 @@ class Jira:
 
     def check_project(self):
         p = self._req("GET", f"/rest/api/3/project/{self.project}")
+        self._project_id = p["id"]
         return p["name"], p.get("style", "")
 
-    def issue_type_id(self, name):
+    # --- schema lookups -------------------------------------------------------------------
+    def issue_types(self):
         if self._types is None:
-            data = self._req("GET", f"/rest/api/3/issue/createmeta/{self.project}/issuetypes")
-            self._types = {t["name"].lower(): t["id"] for t in data.get("issueTypes", data.get("values", []))}
-        for n in [name.lower()] + {"subtask": ["sub-task"], "sub-task": ["subtask"]}.get(name.lower(), []):
-            if n in self._types:
-                return self._types[n]
-        raise JiraError(f"Issue type '{name}' not in project {self.project}: {sorted(self._types)}")
+            d = self._req("GET", f"/rest/api/3/issue/createmeta/{self.project}/issuetypes")
+            self._types = {t["name"]: t["id"] for t in d.get("issueTypes", d.get("values", []))}
+        return self._types
 
-    def search(self, jql, fields=("summary", "labels", "duedate", "parent")):
+    def issue_type_id(self, name):
+        for n, i in self.issue_types().items():
+            if n.lower() == name.lower():
+                return i
+        raise JiraError(f"Work type '{name}' not in {self.project}. Have: {sorted(self.issue_types())}")
+
+    def fields(self):
+        """name -> (id, schema type). Prefers fields scoped to this (team-managed) project."""
+        if self._fields is None:
+            if self._project_id is None:
+                self.check_project()
+            out = {}
+            for f in self._req("GET", "/rest/api/3/field"):
+                scope = (f.get("scope") or {}).get("project", {}).get("id")
+                if scope and scope != self._project_id:
+                    continue
+                if f["name"] in out and not scope:
+                    continue  # keep the project-scoped one
+                out[f["name"]] = (f["id"], (f.get("schema") or {}).get("type", "string"))
+            self._fields = out
+        return self._fields
+
+    def missing_fields(self, names):
+        have = {n.lower() for n in self.fields()}
+        return [n for n in names if n.lower() not in have]
+
+    def _fid(self, name):
+        if name in SYSTEM_FIELDS:
+            return name, None
+        for n, (fid, typ) in self.fields().items():
+            if n.lower() == name.lower():
+                return fid, typ
+        raise JiraError(f"Field '{name}' not found in {self.project}; add it in Space settings > Work types")
+
+    def _encode(self, values):
+        out = {}
+        for name, v in values.items():
+            if v is None or v == "":
+                continue
+            fid, typ = self._fid(name)
+            if typ == "option":
+                v = {"value": v}
+            elif typ == "array" and isinstance(v, str):
+                v = [{"value": v}]
+            out[fid] = v
+        return out
+
+    def _decode(self, issue, names):
+        f = issue.get("fields", {})
+        out = {}
+        for n in names:
+            fid = n if n in SYSTEM_FIELDS else self._fid(n)[0]
+            v = f.get(fid)
+            if isinstance(v, dict) and "value" in v:
+                v = v["value"]
+            out[n] = v
+        return {"key": issue["key"], "fields": out}
+
+    # --- issues ---------------------------------------------------------------------------
+    def search(self, jql, names=("summary", "labels", "duedate", "parent")):
+        ids = [n if n in SYSTEM_FIELDS else self._fid(n)[0] for n in names]
         out, token = [], None
         while True:
-            body = {"jql": jql, "fields": list(fields), "maxResults": 100}
+            body = {"jql": jql, "fields": ids, "maxResults": 100}
             if token:
                 body["nextPageToken"] = token
             d = self._req("POST", "/rest/api/3/search/jql", json=body)
-            out += d.get("issues", [])
+            out += [self._decode(i, names) for i in d.get("issues", [])]
             token = d.get("nextPageToken")
             if not token or d.get("isLast", True):
                 return out
 
-    def create(self, issuetype, summary, description, labels, duedate=None, parent=None):
+    def create(self, issuetype, summary, fields=None, labels=(), duedate=None, parent=None, description=None):
         f = {"project": {"key": self.project}, "issuetype": {"id": self.issue_type_id(issuetype)},
-             "summary": summary, "description": description, "labels": labels}
+             "summary": summary, "labels": list(labels)}
+        f.update(self._encode(fields or {}))
         if duedate:
             f["duedate"] = duedate
         if parent:
             f["parent"] = {"key": parent}
+        if description:
+            f["description"] = adf(description)
         return self._req("POST", "/rest/api/3/issue", json={"fields": f})["key"]
 
-    def attach(self, key, path):
+    def update(self, key, fields=None, duedate=None, labels_add=(), labels_remove=(), summary=None):
+        f = self._encode(fields or {})
+        if duedate:
+            f["duedate"] = duedate
+        if summary:
+            f["summary"] = summary
+        body = {"fields": f}
+        ops = [{"add": l} for l in labels_add] + [{"remove": l} for l in labels_remove]
+        if ops:
+            body["update"] = {"labels": ops}
+        self._req("PUT", f"/rest/api/3/issue/{key}", json=body)
+
+    def link(self, inward, outward, kind="Relates"):
+        self._req("POST", "/rest/api/3/issueLink", json={
+            "type": {"name": kind}, "inwardIssue": {"key": inward}, "outwardIssue": {"key": outward}})
+
+    def attach(self, key, path, mime="application/octet-stream"):
         with open(path, "rb") as fh:
             self._req("POST", f"/rest/api/3/issue/{key}/attachments",
-                      headers={"X-Atlassian-Token": "no-check"},
-                      files={"file": (Path(path).name, fh, "image/png")})
+                      headers={"X-Atlassian-Token": "no-check"}, files={"file": (Path(path).name, fh, mime)})
 
 
 class FakeJira:
-    """Dry-run stand-in that keeps issues in a local JSON file, so duplicate checks work."""
+    """Dry-run stand-in: keeps issues in a local JSON file, understands the JQL this tool uses."""
     def __init__(self, store, project="LAB", site="https://example.atlassian.net"):
         self.store, self.project, self.site = Path(store), project, site
-        self.issues = json.loads(self.store.read_text()) if self.store.exists() else []
+        d = json.loads(self.store.read_text()) if self.store.exists() else {}
+        self.issues, self.links = d.get("issues", []), d.get("links", [])
 
     def _save(self):
-        self.store.write_text(json.dumps(self.issues, indent=1))
+        self.store.write_text(json.dumps({"issues": self.issues, "links": self.links}, indent=1))
 
     def browse_url(self, key):
         return f"{self.site}/browse/{key}"
@@ -107,27 +183,48 @@ class FakeJira:
     def check_project(self):
         return "Lab Equipment (dry run)", "next-gen"
 
-    def search(self, jql, fields=None):
-        labels = re.findall(r'labels\s*=\s*"([^"]+)"', jql)
-        keys = re.findall(r'key\s*=\s*"([^"]+)"', jql)
-        itype = re.search(r'issuetype\s*=\s*(\w+)', jql)
-        hits = [i for i in self.issues if all(l in i["fields"]["labels"] for l in labels)
-                and (not keys or i["key"] in keys)
-                and (not itype or i["fields"]["issuetype"].lower() == itype.group(1).lower())]
-        if "ORDER BY duedate" in jql:
-            hits.sort(key=lambda i: i["fields"].get("duedate") or "9999")
-        return hits
+    def issue_types(self):
+        return {"Equipment": "1", "Calibration Event": "2", "Epic": "3"}
 
-    def create(self, issuetype, summary, description, labels, duedate=None, parent=None):
+    def missing_fields(self, names):
+        return []
+
+    def search(self, jql, names=None):
+        labels = re.findall(r'labels\s*=\s*"([^"]+)"', jql)
+        keys = re.findall(r'\bkey\s*=\s*"([^"]+)"', jql)
+        parent = re.findall(r'parent\s*=\s*"([^"]+)"', jql)
+        itype = re.search(r'issuetype\s*=\s*"([^"]+)"', jql)
+        hits = [i for i in self.issues
+                if all(l in i["fields"]["labels"] for l in labels)
+                and (not keys or i["key"] in keys)
+                and (not parent or (i["fields"].get("parent") or {}).get("key") in parent)
+                and (not itype or i["fields"]["issuetype"].lower() == itype.group(1).lower())]
+        return [{"key": i["key"], "fields": dict(i["fields"])} for i in hits]
+
+    def create(self, issuetype, summary, fields=None, labels=(), duedate=None, parent=None, description=None):
         key = f"{self.project}-{len(self.issues) + 1}"
-        self.issues.append({"key": key, "fields": {"issuetype": issuetype, "summary": summary,
-                            "labels": labels, "duedate": duedate,
-                            "parent": {"key": parent} if parent else None,
-                            "description": description}})
+        f = {"issuetype": issuetype, "summary": summary, "labels": list(labels), "duedate": duedate,
+             "parent": {"key": parent} if parent else None}
+        f.update({k: v for k, v in (fields or {}).items() if v not in (None, "")})
+        self.issues.append({"key": key, "fields": f})
         self._save()
         return key
 
-    def attach(self, key, path):
+    def update(self, key, fields=None, duedate=None, labels_add=(), labels_remove=(), summary=None):
+        i = next(i for i in self.issues if i["key"] == key)
+        i["fields"].update({k: v for k, v in (fields or {}).items() if v not in (None, "")})
+        if duedate:
+            i["fields"]["duedate"] = duedate
+        if summary:
+            i["fields"]["summary"] = summary
+        i["fields"]["labels"] = [l for l in i["fields"]["labels"] if l not in labels_remove] + list(labels_add)
+        self._save()
+
+    def link(self, inward, outward, kind="Relates"):
+        self.links.append([inward, outward, kind])
+        self._save()
+
+    def attach(self, key, path, mime=None):
         pass
 
 

@@ -1,51 +1,62 @@
-# GT asset registration tool
+# GT equipment registry (Jira + QR labels)
 
-Type an instrument's identification once. The tool:
+Type an instrument's identification once. The tool gives it a permanent Equipment ID, creates its
+Jira record, records its calibration, and prints a QR label. Base Jira only (no Assets add-on).
 
-1. checks Jira for that serial number, so nothing is registered twice
-2. creates a Jira task under the stand's epic, labelled rack or sensors from the instrument type (the task key, e.g. LAB-12, is the asset ID)
-3. makes a QR label (12 mm tape, links to the Jira task), attaches it to the task, and prints it
-   or opens it if no printer is set
+## Jira model (Lab Equipment space, key LAB)
 
-Base Jira only, no Assets add-on. Layout in the **LAB** space:
-
-| Jira item | Holds |
+| Item | What it is |
 |---|---|
-| Epic "GT" | the stand; one epic per stand (ET, …) |
-| Task under the epic | one instrument: type, manufacturer, model, S/N, subsystem, cal info in the description |
-| Due date | calibration due date (blank = cal not required) |
-| Labels | `asset`, `sn-…`, `type-…`, `subsys-…`, `stand-…`, `bucket-rack` (cDAQ, amps, supplies, SSR) / `bucket-sensors` (PTs, load cell, TCs, Alicats), `cal-required` / `cal-not-required` |
+| **Equipment** work type | one per physical item, racks included. Fields: Equipment ID, Equipment Class, Manufacturer, Model, Serial Number, Location, Calibration Status, Last Calibrated; built-in **Due date** = next cal due |
+| **Calibration Event** (sub-item of an Equipment issue) | one per calibration. Fields: Calibration Date, Result (Pass/Fail/Conditional), Provider; Due date = next due; certificate attached |
+| Rack ↔ instrument | "Relates" link + `in-<rack id>` label + the Location field. Instruments keep their identity when moved |
+| Epics | project work only (e.g. "Commission ET stand"), not equipment |
 
-## Setup (once, on the PC that has the label printer)
+- **Equipment ID** (`GG-EQ-000012`) is permanent and goes on the label and into Sift. The Jira key is for navigation.
+- **Serial number** is an attribute; it's also used for the duplicate check (`sn-…` label).
+- **Calibration status is time-aware** (`calibration.py`): for a given date, only calibrations on or
+  before that date count, so a later calibration never makes an earlier run look calibrated.
+  Conditional results count as Unknown unless `CONDITIONAL_COUNTS_AS=valid`.
+- A calibration entered late (older than the latest one) is kept as history but doesn't overwrite the summary.
+
+### Setting up the work types (once, Space settings > Work types; names must match)
+
+1. Add work type **Equipment** with fields: Short text *Equipment ID*, *Manufacturer*, *Model*, *Serial Number*,
+   *Location*; Dropdown *Equipment Class* (Test Rack, Pressure Transducer, Load Cell, Load Cell Amplifier,
+   Flow Controller, DAQ Chassis, DAQ Module, Thermocouple, Power Supply, Other); Dropdown *Calibration Status*
+   (Valid, Expired, Failed, Not Required, Unknown); Date *Last Calibrated*.
+2. Rename **Subtask** to **Calibration Event** and add: Date *Calibration Date*; Dropdown *Result* (Pass, Fail,
+   Conditional); Short text *Provider*.
+
+## Install (PC with the label printer)
 
 ```powershell
-cd gt-asset-tool
 py -m pip install -r requirements.txt
-copy .env.example .env      # then edit .env: site, email, API token
-py asset_tool.py setup      # checks access, creates the "GT" epic
+copy .env.example .env        # fill in site, email, API token
+py asset_tool.py setup        # checks access, work types and fields
+py asset_tool.py add-rack "GT Test Rack"   # then set DEFAULT_RACK in .env to the ID it prints
 ```
-
-API token: id.atlassian.com > Security > Create and manage API tokens. It goes only in `.env`.
 
 ## Use
 
 ```powershell
-py asset_tool.py add                      # prompts for each field
-py asset_tool.py add --type "Pressure transducer" --mfr Omega --model PX309-1KGI --sn 48213 --last-cal 2025-09-30
-py asset_tool.py import assets.csv        # columns: type,mfr,model,sn,subsystem,last_cal,interval,cnr,notes
-py asset_tool.py list                     # assets on the stand, soonest cal due first
-py asset_tool.py label LAB-12             # remake / reprint a label
+py asset_tool.py add                       # prompts for each field
+py asset_tool.py add --class "Pressure Transducer" --mfr Omega --model PX309 --sn 48213 --slot PT1 --last-cal 2025-09-15
+py asset_tool.py import assets.csv         # columns: class,mfr,model,sn,rack,slot,last_cal,interval,cnr,notes
+py asset_tool.py cal GG-EQ-000002 --date 2026-10-09 --result Pass --provider "Omega" --cert cert.pdf
+py asset_tool.py check GG-EQ-000002 --at 2026-10-01
+py asset_tool.py list --rack GG-EQ-000001
+py asset_tool.py label GG-EQ-000002        # reprint (e.g. after a recalibration changes the due date)
 ```
 
-Add `--dry-run` to try anything without touching Jira (uses a local `dryrun_jira.json`).
+`--dry-run` on any command uses a local fake Jira. Tests: `py -m pytest tests`.
 
 ## Printer
 
-Set `LABEL_PRINTER` in `.env` to the Windows printer name of the Brother P-touch. Printing goes
-through the Windows driver (pywin32) and has not been tested on the real printer yet. Without a
-printer the label PNG opens on screen and is saved in `labels/`.
+Set `LABEL_PRINTER` to the Windows name of the Brother P-touch. Printing goes through the Windows driver
+(pywin32) and is untested until the printer arrives; without it the label PNG opens and is saved in `labels/`.
 
-## Later
+## Not built yet
 
-If Revel exposes device identity (model/serial) through its API, a discovery step can call the same
-`register()` function instead of the prompts.
+- Automatic discovery (waiting on what Revel can expose); it would call the same `register()`.
+- Writing equipment IDs and cal status into Sift runs from the run bridge, using `calibration.status_at`.
