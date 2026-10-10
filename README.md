@@ -3,7 +3,7 @@
 Type an instrument's identification once. The tool:
 
 1. checks Jira for that serial number, so nothing is registered twice
-2. creates a Jira task under the stand's "Test Rack" or "Sensors" epic (picked from the instrument type) (the task key, e.g. LAB-12, is the asset ID)
+2. creates a Jira task under the stand's epic, labelled rack or sensors from the instrument type (the task key, e.g. LAB-12, is the asset ID)
 3. makes a QR label (12 mm tape, links to the Jira task), attaches it to the task, and prints it
    or opens it if no printer is set
 
@@ -11,11 +11,10 @@ Base Jira only, no Assets add-on. Layout in the **LAB** space:
 
 | Jira item | Holds |
 |---|---|
-| Epic "GT Test Rack" | equipment mounted in the rack: cDAQ + modules, amps, supplies, SSR |
-| Epic "GT Sensors" | sensors out on the stand: PTs, load cell, TCs, Alicats |
-| Task under an epic | one instrument: type, manufacturer, model, S/N, subsystem, cal info in the description |
+| Epic "GT" | the stand; one epic per stand (ET, …) |
+| Task under the epic | one instrument: type, manufacturer, model, S/N, subsystem, cal info in the description |
 | Due date | calibration due date (blank = cal not required) |
-| Labels | `asset`, `sn-…`, `type-…`, `subsys-…`, `stand-…`, `bucket-rack` / `bucket-sensors`, `cal-required` / `cal-not-required` |
+| Labels | `asset`, `sn-…`, `type-…`, `subsys-…`, `stand-…`, `bucket-rack` (cDAQ, amps, supplies, SSR) / `bucket-sensors` (PTs, load cell, TCs, Alicats), `cal-required` / `cal-not-required` |
 
 ## Setup (once, on the PC that has the label printer)
 
@@ -23,7 +22,7 @@ Base Jira only, no Assets add-on. Layout in the **LAB** space:
 cd gt-asset-tool
 py -m pip install -r requirements.txt
 copy .env.example .env      # then edit .env: site, email, API token
-py asset_tool.py setup      # checks access, creates the "GT Test Rack" and "GT Sensors" epics
+py asset_tool.py setup      # checks access, creates the "GT" epic
 ```
 
 API token: id.atlassian.com > Security > Create and manage API tokens. It goes only in `.env`.

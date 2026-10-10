@@ -1,6 +1,6 @@
 """GT asset registration: type an instrument's ID once -> Jira task + QR label.
 
-  python asset_tool.py setup              check Jira access, create the stand's two epics
+  python asset_tool.py setup              check Jira access, create the stand's epic
   python asset_tool.py add                register one instrument (prompts for anything missing)
   python asset_tool.py import assets.csv  register many from a CSV (same columns as the flags)
   python asset_tool.py list               show registered instruments and cal due dates
@@ -22,7 +22,7 @@ from jira_client import adf_doc, from_env
 
 HERE = Path(__file__).resolve().parent
 
-# Each stand gets two epics: equipment mounted in its test rack, and sensors out on the stand.
+# One epic per stand. Within it, rack equipment vs. sensors out on the stand is a label (bucket-…).
 BUCKETS = {"rack": "Test Rack", "sensors": "Sensors"}
 SENSOR_TYPES = {"Pressure transducer", "Load cell", "Thermocouple", "Mass flow controller", "Mass flow meter"}
 
@@ -52,8 +52,8 @@ def bucket_for(itype):
     return "sensors" if itype in SENSOR_TYPES else "rack"
 
 
-def epic_name(stand, bucket):
-    return f"{stands().get(stand, stand.upper())} {BUCKETS[bucket]}"
+def stand_name(stand):
+    return stands().get(stand, stand.upper())
 
 
 def tag(prefix, value):
@@ -85,18 +85,17 @@ def ask(prompt, default=None, choices=None):
             return v
 
 
-def stand_epic(jira, stand, bucket, create=False):
+def stand_epic(jira, stand, create=False):
     found = jira.search(f'project = "{jira.project}" AND labels = "{tag("stand", stand)}" '
-                        f'AND labels = "{tag("bucket", bucket)}" AND issuetype = Epic')
+                        f'AND issuetype = Epic AND statusCategory != Done ORDER BY created ASC')
     if found:
         return found[0]["key"]
     if not create:
-        raise SystemExit(f"No '{epic_name(stand, bucket)}' epic yet. Run: python asset_tool.py setup --stand {stand}")
-    name = epic_name(stand, bucket)
-    return jira.create("Epic", name, adf_doc([("Stand", stands().get(stand, stand)), ("Group", BUCKETS[bucket])],
-                       f"Each {BUCKETS[bucket].lower()} item on this stand is a child task of this epic. "
-                       "Moving an item to another stand = change its parent epic."),
-                       [tag("stand", stand), tag("bucket", bucket)])
+        raise SystemExit(f"No '{stand_name(stand)}' epic yet. Run: python asset_tool.py setup --stand {stand}")
+    return jira.create("Epic", stand_name(stand), adf_doc([("Stand", stand_name(stand)), ("Stand ID", stand)],
+                       "Every instrument on this stand is a child task of this epic. Rack equipment and sensors "
+                       "are told apart by the bucket-rack / bucket-sensors labels."),
+                       [tag("stand", stand)])
 
 
 def find_by_serial(jira, sn):
@@ -120,9 +119,9 @@ def register(jira, a, rack, printer=None, show=True):
     if not a.get("cnr") and a.get("last_cal"):
         a["due"] = add_months(dt.date.fromisoformat(a["last_cal"]), int(a.get("interval") or 12)).isoformat()
     bucket = bucket_for(a["type"])
-    epic = stand_epic(jira, rack, bucket)
+    epic = stand_epic(jira, rack)
     rows = [("Type", a["type"]), ("Manufacturer", a["mfr"]), ("Model", a["model"]),
-            ("Serial number", a["sn"]), ("Subsystem", a["subsystem"]), ("Location", epic_name(rack, bucket)),
+            ("Serial number", a["sn"]), ("Subsystem", a["subsystem"]), ("Location", f"{stand_name(rack)} ({BUCKETS[bucket]})"),
             ("Calibration", "Not required (CNR)" if a.get("cnr") else
              f"Last {a.get('last_cal') or 'unknown'}, every {a.get('interval') or 12} months, due {a['due'] or 'unknown'}")]
     if a.get("notes"):
@@ -186,8 +185,7 @@ def main(argv=None):
         print(f"Signed in as {jira.whoami()}")
         name, style = jira.check_project()
         print(f"Project {jira.project}: {name} ({style})")
-        for b in BUCKETS:
-            print(f"Epic '{epic_name(args.rack, b)}': {stand_epic(jira, args.rack, b, create=True)}")
+        print(f"Epic '{stand_name(args.rack)}': {stand_epic(jira, args.rack, create=True)}")
     elif args.cmd == "add":
         while True:
             register(jira, prompt_asset(args), args.rack, args.printer)
