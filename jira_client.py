@@ -339,7 +339,9 @@ def connect(dry_run=False, store="dryrun_jira.json"):
         return j
     names = [t.lower() for t in j.issue_types()]
     mode = os.environ.get("JIRA_MODE", "auto").lower()
-    if mode == "simple" or (mode == "auto" and "equipment" not in names):
+    full = "equipment" in names and "calibration event" in names and not j.missing_fields(
+        ["Equipment ID", "Serial Number", "Calibration Status", "Calibration Date", "Result"])
+    if mode == "simple" or (mode == "auto" and not full):  # half-finished setup falls back to simple
         s = SimpleJira.__new__(SimpleJira)
         s.__dict__.update(j.__dict__)
         return s
