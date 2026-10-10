@@ -1,0 +1,4 @@
+.env
+dryrun_jira.json
+labels/
+__pycache__/
