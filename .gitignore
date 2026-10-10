@@ -2,3 +2,5 @@
 dryrun_jira.json
 labels/
 __pycache__/
+reports/
+.pytest_cache/

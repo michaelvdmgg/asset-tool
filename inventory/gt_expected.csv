@@ -1,0 +1,17 @@
+name,equipment_class,manufacturer,model,serial,connection,revel_channel,match,notes
+cDAQ chassis,DAQ chassis,National Instruments,cDAQ-9189,2A23393,revel-ethernet,cDAQ9189_2A23393_*,hw:ni-chassis:cDAQ9189-2A23393|name:^cDAQ9189,Ethernet port 1 to Revel box port 2. Serial inferred from the Revel channel name; check the chassis label
+NI 9253 current input (slot 3),DAQ module,National Instruments,NI 9253,,revel-ethernet,,hw:ni-chassis:cDAQ9189-2A23393/slot3,50 kHz high-speed module. Other installed modules and their slots still to be listed
+Alicat flow meter 1 (USB to Revel),Mass flow meter,Alicat,,,revel-usb,,,USB into the Revel box; Windows can't see it
+Alicat flow meter 2 (USB to Revel),Mass flow meter,Alicat,,,revel-usb,,,USB into the Revel box; Windows can't see it
+Alicat flow meter 3 (USB to Revel),Mass flow meter,Alicat,,,revel-usb,,,USB into the Revel box; Windows can't see it
+Alicat flow meter 4 (USB to Revel),Mass flow meter,Alicat,,,revel-usb,,,USB into the Revel box; Windows can't see it
+Alicat flow meter 5 (4-20 mA),Mass flow meter,Alicat,,,analog,,,"3 wires (gnd, power, 4-20 mA) into an NI module, which one unknown; maybe N2_MFM"
+Alicat flow meter 6 (4-20 mA),Mass flow meter,Alicat,,,analog,,,"3 wires (gnd, power, 4-20 mA) into an NI module, which one unknown"
+PT1,Pressure transducer,,,,analog,pt1,,50 kHz channel
+PT2,Pressure transducer,,,,analog,pt2,,50 kHz channel
+PT3,Pressure transducer,,,,analog,pt3,,50 kHz channel
+pt100 sensor,Pressure transducer?,,,,analog,pt100,,50 kHz channel; confirm whether this is a PT or a PT100 RTD
+Power supply for Alicats,Power supply,Wefomey,WFM-1018-72,,none,,,Set to ~18.2 V
+Rack camera (ELP),Camera,ELP,,,windows-usb,,hw:usb:32E4|name:HD USB Camera,Demo camera on the stand PC
+Label printer,Label printer,Brother,PT-P710BT?,,windows-usb,,hw:usb:04F9,Not installed yet
+Revel box,Runtime controller,Revel,,,network,,,No identity exposed through a documented API (question open with Revel)

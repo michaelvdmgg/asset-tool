@@ -80,3 +80,26 @@ Double-click **`GT Equipment.bat`** (or run `pyw asset_gui.py`). Three tabs:
 
 **Practice mode** (top right) uses a local file instead of Jira, for rehearsing the demo.
 It uses the same `.env` and the same code as the command line.
+
+## Discovery proof of concept (read-only)
+
+`discover.py` is Phase 1 of the equipment brief: find out what can be identified automatically
+before building more Jira workflow. It never writes to Jira and sends no commands to hardware.
+
+```powershell
+py discover.py                                    # Windows devices on this PC vs the expected list
+py discover.py --revel https://galactic-gt-stand  # + Revel Channels API (on the stand network)
+py discover.py --visa-idn                         # + *IDN? to VISA instruments (needs pyvisa)
+py discover.py --jira                             # + look up existing Jira assets by serial (read-only)
+```
+
+Adapters: Windows Plug and Play (USB descriptor serials, COM ports, cameras, printers), VISA,
+and Revel channel names (NI-DAQmx names an Ethernet chassis `cDAQ<model>-<serial>`, so the
+chassis serial can be inferred; slots show up as `Mod<n>`). Each result is labelled
+*confirmed* (serial reported by the device), *inferred* (from names or config) or *unresolved*.
+A USB-serial adapter's serial is never taken as the instrument's.
+
+`inventory/<stand>_expected.csv` is the list of what should be there, with how each item is
+connected and a `match` rule (`serial:`, `hw:` or `name:`; a rule matching two devices is
+reported as ambiguous, never guessed). The report goes to `reports/` (Markdown + JSON) and
+shows the coverage, unexpected devices, conflicts and Revel channels with no hardware identity.
