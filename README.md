@@ -67,3 +67,16 @@ Set `LABEL_PRINTER` to the Windows name of the Brother P-touch. Printing goes th
 
 - Automatic discovery (waiting on what Revel can expose); it would call the same `register()`.
 - Writing equipment IDs and cal status into Sift runs from the run bridge, using `calibration.status_at`.
+
+## Window instead of commands
+
+Double-click **`GT Equipment.bat`** (or run `pyw asset_gui.py`). Three tabs:
+
+- **Add equipment**: type, manufacturer, model, S/N, rack, last cal date → **Add to Jira**. Shows the
+  new Equipment ID, a link to the Jira item, the calibration status and the QR label.
+- **Log calibration**: pick the equipment, date, result, optional certificate PDF → status updates.
+- **Equipment list**: everything with its calibration status (colored) and due date; double-click
+  opens it in Jira, **Show / print label** remakes the label.
+
+**Practice mode** (top right) uses a local file instead of Jira, for rehearsing the demo.
+It uses the same `.env` and the same code as the command line.
