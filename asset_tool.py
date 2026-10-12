@@ -21,6 +21,7 @@ import datetime as dt
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 import calibration as cal
@@ -86,11 +87,15 @@ def find_equipment(jira, ref):
     return found[0] if found else None
 
 
-def must_equipment(jira, ref):
-    e = find_equipment(jira, ref)
-    if not e:
-        raise SystemExit(f"No equipment '{ref}' in {jira.project}")
-    return e
+def must_equipment(jira, ref, tries=6):
+    # Jira search lags a few seconds behind issue creation, so a just-created item may not be found yet
+    for i in range(tries):
+        e = find_equipment(jira, ref)
+        if e:
+            return e
+        if i < tries - 1:
+            time.sleep(1.5)
+    raise SystemExit(f"No equipment '{ref}' in {jira.project}")
 
 
 def find_by_serial(jira, sn):
